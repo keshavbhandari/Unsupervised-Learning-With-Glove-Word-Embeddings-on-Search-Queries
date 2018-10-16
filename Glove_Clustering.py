@@ -5,54 +5,84 @@ Created on Thu Oct  4 14:07:47 2018
 @author: kbhandari
 """
 
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Oct  4 14:07:47 2018
+
+@author: kbhandari
+"""
+
 import pandas as pd
 import numpy as np
 import string
 import sys
 import re
 from nltk.corpus import stopwords
-#import nltk
-#nltk.download('stopwords')
+from nltk.stem import WordNetLemmatizer
+import nltk
 
-data = pd.read_csv("Search Queries 20180701-20180930.csv")
+path = 'C:\\Users\\kbhandari\\Desktop\\Document Clustering\\'
+data = pd.read_csv(path+"Search Queries 20180701-20180930.csv")
+data.head(n=10)
+data.describe().round(1)
 
-def data_preprocess(data, column, lower=True, no_ascii_chars=True, no_numbers=True, no_punctuation=True, remove_stopwords=True, custom_blank_text='non ascii symbols punctuations numbers'):
+def data_preprocess(dataframe, column, lower=True, ascii_chars=True, no_numbers=True, no_punctuation=True, remove_stopwords=True, lemmatize=True, custom_blank_text='non ascii symbols punctuations numbers'):
     #Lower case
     if lower == True:
-        data['Query_Modified'] = data[column].str.lower()
+        dataframe['Query_Modified'] = dataframe[column].str.lower()
     
     #Remove non-ascii characters
-    if no_ascii_chars == True:                            
-        data["Query_Modified"] = data["Query_Modified"].apply(lambda x: ''.join([" " if i not in string.printable else i for i in x]))
+    if ascii_chars == True:                            
+        dataframe["Query_Modified"] = dataframe["Query_Modified"].apply(lambda x: ''.join([" " if i not in string.printable else i for i in x]))
     
     #Remove numbers
     if no_numbers == True:
-        data['Query_Modified'] = data['Query_Modified'].str.replace(r'\d', '')
+        dataframe['Query_Modified'] = dataframe['Query_Modified'].str.replace(r'\d', '')
     
     #Punctuation
     if no_punctuation == True:
-        data['Query_Modified'] = data['Query_Modified'].str.replace(r'[^\w\s]+', ' ')
+        dataframe['Query_Modified'] = dataframe['Query_Modified'].str.replace(r'[^\w\s]+', ' ')
     
     #Remove stopwords
     if remove_stopwords == True:
         stop = stopwords.words('english')
-        data['Query_Modified'] = data['Query_Modified'].apply(lambda x: ' '.join([word for word in x.split() if word not in (stop)]))
+        dataframe['Query_Modified'] = dataframe['Query_Modified'].apply(lambda x: ' '.join([word for word in x.split() if word not in (stop)]))
+    
+    #Lemmatize words
+    if lemmatize == True:
+        wnl = WordNetLemmatizer()
+        def lemmatize_all(sentence):
+            text = list()
+            for word, tag in nltk.pos_tag(str.split(sentence)):
+                if tag.startswith("NN"):
+                    text.append( wnl.lemmatize(word, pos='n'))
+                elif tag.startswith('VB'):
+                    text.append( wnl.lemmatize(word, pos='v'))
+                elif tag.startswith('JJ'):
+                    text.append( wnl.lemmatize(word, pos='a'))
+                else:
+                    text.append( word)
+            return ' '.join(text)            
+
+        dataframe['Query_Modified'] = dataframe['Query_Modified'].apply(lambda sentence: ' '.join([lemmatize_all(sentence)]))
     
     #Replacing blanks from ascii characters, punctuations and numbers with custom text
-    data['Query_Modified'].replace(r'^\s*$', custom_blank_text, regex=True, inplace = True)
+    dataframe['Query_Modified'].replace(r'^\s*$', custom_blank_text, regex=True, inplace = True)
     
     #Extra Spaces
-    data['Query_Modified'] = data['Query_Modified'].apply(lambda x: re.sub("\s\s+", " ", str(x.strip())))
+    dataframe['Query_Modified'] = dataframe['Query_Modified'].apply(lambda x: re.sub("\s\s+", " ", str(x.strip())))
     
-    return data
+    print('Done')
+    
+    return dataframe
 
 
-data = data_preprocess(data, 'Search Query')
+data = data_preprocess(data, column='Search Query', lower=True, ascii_chars=True, no_numbers=True, no_punctuation=True, remove_stopwords=True, lemmatize=False, custom_blank_text='non ascii symbols punctuations numbers')
 
 
 #Check length of query
-data['Query_Modified'].str.split().str.len().describe(percentiles=[0.25,0.5,0.75,0.80,0.85,0.90,0.95])
-len(data[data['Query_Modified'] == ''])
+print(data['Query_Modified'].str.split().str.len().describe(percentiles=[0.25,0.5,0.75,0.80,0.85,0.90,0.95]))
+print(len(data[data['Query_Modified'] == '']))
 
 
 def get_non_glove_words(dataframe, column, model):
@@ -75,16 +105,19 @@ def get_non_glove_words(dataframe, column, model):
     non_glove_words_df = pd.DataFrame({'unique_non_glove_words':non_glove_words})
     non_glove_words_df = pd.merge(non_glove_words_df,counts,how='left',left_on=['unique_non_glove_words'],right_on=['unique_words']).iloc[:,[0,2]]
     non_glove_words_df['cum_perc'] = round(100*non_glove_words_df["counts"].cumsum()/non_glove_words_df["counts"].sum(),2)
-
+    
+    print('Done')
+    
     return(non_glove_words_df)
 
 
 from gensim.models import KeyedVectors
 # Load the Stanford GloVe model
 filename = 'glove.6B.100d.txt.word2vec'
-model = KeyedVectors.load_word2vec_format(filename, binary=False)
+model = KeyedVectors.load_word2vec_format(path+filename, binary=False)
     
 non_glove_words_df = get_non_glove_words(dataframe = data, column = 'Query_Modified', model = model)    
+print(len(non_glove_words_df))
 
 #Spelling Mistakes and Abbreviations
 replacements = {
@@ -130,6 +163,7 @@ data['Query_Modified'].replace(replacements, regex=True, inplace=True)
 data['Query_Modified'] = data['Query_Modified'].apply(lambda x: re.sub("\s\s+", " ", str(x.strip())))
 
 non_glove_words_df = get_non_glove_words(dataframe = data, column = 'Query_Modified', model = model)
+print(len(non_glove_words_df))
 
 def replace_non_glove_words(data, non_glove_words_df, column):
     #Replacing Non Glove Words with Blanks
@@ -146,23 +180,24 @@ def replace_non_glove_words(data, non_glove_words_df, column):
         j+=1
         
     #Extra Spaces
-    data[column] = data[column].apply(lambda x: re.sub("\s\s+", " ", str(x.strip())))    
+    data[column] = data[column].apply(lambda x: re.sub("\s\s+", " ", str(x.strip()))) 
+    
     return data
 
 data = replace_non_glove_words(data, non_glove_words_df, 'Query_Modified')
     
 #Blank rows
-len(data[data['Query_Modified'] == ''])
+print(len(data[data['Query_Modified'] == '']))
 blanks = data[data['Query_Modified'] == '']
 data.loc[data['Query_Modified'] == '','Query_Modified'] = 'non ascii symbols punctuations numbers'   
 data = data[data['Query_Modified'] != '']
 
 #Length of query
-data['Query_Modified'].str.split().str.len().describe(percentiles=[0.25,0.5,0.75,0.80,0.85,0.90,0.95])
-len(data[data['Query_Modified'] == ''])
+print(data['Query_Modified'].str.split().str.len().describe(percentiles=[0.25,0.5,0.75,0.80,0.85,0.90,0.95]))
+print(len(data[data['Query_Modified'] == '']))
 
 
-def approach(dataframe, column, method, n=3):
+def extract_vectors(dataframe, column, method, n=3):
     if method=="first_n_words":
         #Approach: First n words
         #Add 'blank' to words less than n
@@ -181,7 +216,7 @@ def approach(dataframe, column, method, n=3):
         
         #Add Glove embeddings
         gloveFile = "glove.6B.100d.txt"
-        Glovewords = pd.read_table(gloveFile, sep=" ", index_col=0, header=None, quoting=3)
+        Glovewords = pd.read_table(path+gloveFile, sep=" ", index_col=0, header=None, quoting=3)
         
         # Unique words
         unique = list(dataframe['Top_Words'].str.split(' ', expand=True).stack().unique())
@@ -218,7 +253,7 @@ def approach(dataframe, column, method, n=3):
         #Approach: Sum of d word vectors for n words
         #Add Glove embeddings
         gloveFile = "glove.6B.100d.txt"
-        Glovewords = pd.read_table(gloveFile, sep=" ", index_col=0, header=None, quoting=3)
+        Glovewords = pd.read_table(path+gloveFile, sep=" ", index_col=0, header=None, quoting=3)
         
         # Unique words
         unique = list(dataframe[column].str.split(' ', expand=True).stack().unique())
@@ -251,9 +286,9 @@ def approach(dataframe, column, method, n=3):
         del stack
         return cluster_dataset
 
-
-cluster_dataset = approach(data,'Query_Modified','first_n_words',n=3)
-cluster_dataset = approach(data,'Query_Modified','sum_word_vectors')
+#Extracting glove vectors
+cluster_dataset = extract_vectors(data,column='Query_Modified',method='first_n_words',n=3)
+cluster_dataset = extract_vectors(data,column='Query_Modified',method='sum_word_vectors')
 
 
 #Clustering
@@ -286,7 +321,7 @@ y_kmeans = kmeans.fit_predict(X_train)
 del X_train
 
 data['CLUSTERS'] = kmeans.labels_
-data.to_csv("cluster_sum_glove_vectors.csv",index=False)
+data.to_csv(path+"cluster_sum_glove_vectors.csv",index=False)
 
 #Summarize results
 def summary(dataframe, cluster_column, original_column, modified_column, top_n, show_original=False):
@@ -309,16 +344,19 @@ def summary(dataframe, cluster_column, original_column, modified_column, top_n, 
         modified_keywords.extend([kws])        
     modified_keywords = pd.DataFrame(modified_keywords, columns=['Top Modified Keywords'])
     df = pd.concat([df, modified_keywords.reset_index(drop=True)], axis=1)
+    df = df.round(4)
     
     return df
 
-cluster_summary = summary(data, 'CLUSTERS', 'Search Query', 'Query_Modified', 10, False)
-cluster_summary.to_csv("cluster_summary_sum_glove_vectors.csv",index=False)
+#Cluster Summary
+cluster_summary = summary(data, 'CLUSTERS', 'Search Query', 'Query_Modified', top_n=10, show_original=False)
+cluster_summary.to_csv(path+"cluster_summary_sum_glove_vectors.csv",index=False)
 
 
 #Sub clusters
 cluster_dataset = data.loc[data['CLUSTERS'] == 4]
-cluster_dataset = approach(cluster_dataset,'Query_Modified','sum_word_vectors')
+cluster_dataset = extract_vectors(cluster_dataset,'Query_Modified','sum_word_vectors')
+print(cluster_dataset.shape)
 
 #Clustering
 sc_X = StandardScaler()
@@ -341,21 +379,14 @@ plt.ylabel('WCSS')
 plt.show()
 
 # Fitting K-Means to the dataset
-kmeans = KMeans(n_clusters = 6, init = 'k-means++', random_state = 42)
+kmeans = KMeans(n_clusters = 2, init = 'k-means++', random_state = 42)
 y_kmeans = kmeans.fit_predict(X_train)
 
 del X_train
 
 sub_cluster = data.loc[data['CLUSTERS'] == 4].copy()
 sub_cluster['SUB_CLUSTERS'] = kmeans.labels_
-sub_cluster.to_csv("sub_cluster_sum_glove_vectors.csv",index=False)
+sub_cluster.to_csv(path+"sub_cluster_sum_glove_vectors.csv",index=False)
 
 sub_cluster_summary = summary(sub_cluster, 'SUB_CLUSTERS', 'Search Query', 'Query_Modified', 10, False)
-cluster_summary.to_csv("sub_cluster_summary_sum_glove_vectors.csv",index=False)
-
-
-
-
-
-
-#cluster_dataset.drop('CLUSTERS', axis=1, inplace=True)
+sub_cluster_summary.to_csv(path+"sub_cluster_summary_sum_glove_vectors.csv",index=False)
