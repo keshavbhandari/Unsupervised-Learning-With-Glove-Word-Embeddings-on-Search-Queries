@@ -5,13 +5,6 @@ Created on Thu Oct  4 14:07:47 2018
 @author: kbhandari
 """
 
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Oct  4 14:07:47 2018
-
-@author: kbhandari
-"""
-
 import pandas as pd
 import numpy as np
 import string
